@@ -1,0 +1,30 @@
+[package]
+name = "dns-proxy"
+version = "0.1.0"
+description = "Minimal DNS proxy: plain DNS, DoT and DoH in, DoT and DoH out"
+license = "MIT"
+rust-version = "1.85"
+edition = "2024"
+
+[dependencies]
+base64 = "0.23.1"
+http-body-util = "0.1.5"
+hyper = { version = "1.11.1", features = ["http1", "http2", "server", "client"] }
+hyper-util = { version = "0.1.21", features = ["tokio", "server-auto", "http1", "http2"] }
+ipnet = { version = "2.12.2", features = ["serde"] }
+rustls = { version = "0.23.45", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+serde = { version = "1.0.229", features = ["derive"] }
+tokio = { version = "1.53.2", features = ["rt-multi-thread", "net", "io-util", "time", "macros", "signal", "sync"] }
+tokio-rustls = { version = "0.26.6", default-features = false, features = ["ring", "tls12", "logging"] }
+toml = "1.1.6"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt"] }
+webpki-roots = "1.0.9"
+
+[dev-dependencies]
+rcgen = "0.14.10"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

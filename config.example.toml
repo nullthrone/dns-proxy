@@ -1,0 +1,68 @@
+# dns-proxy example configuration.
+# Every listener needs an explicit 'allow' list; nothing is open by default.
+
+# All values optional; shown with their defaults.
+[limits]
+udp_max_inflight = 1024          # concurrent UDP queries per listener (excess dropped)
+tcp_max_connections = 256        # concurrent TCP/DoT/DoH connections per listener
+tcp_max_inflight_per_conn = 16   # concurrent queries per connection / HTTP/2 streams
+tcp_idle_timeout_ms = 10000
+tls_handshake_timeout_ms = 5000
+upstream_timeout_ms = 2000       # one attempt against one upstream
+query_timeout_ms = 5000          # overall, across failover attempts
+dot_pool_size = 8                # idle connections kept per DoT upstream
+
+# --- Inbound -----------------------------------------------------------------
+
+[[listen]]
+proto = "udp"
+addr = "127.0.0.1:53"
+allow = ["127.0.0.0/8"]
+
+[[listen]]
+proto = "tcp"
+addr = "127.0.0.1:53"
+allow = ["127.0.0.0/8"]
+
+[[listen]]
+proto = "udp"
+addr = "[::1]:53"
+allow = ["::1/128"]
+
+[[listen]]
+proto = "tcp"
+addr = "[::1]:53"
+allow = ["::1/128"]
+
+# DoT and DoH need a certificate. With the shipped systemd unit, use
+# LoadCredential= and reference the files via ${CREDENTIALS_DIRECTORY}.
+#
+# [[listen]]
+# proto = "dot"
+# addr = "0.0.0.0:853"
+# allow = ["192.168.0.0/16", "10.0.0.0/8"]
+# cert = "${CREDENTIALS_DIRECTORY}/cert.pem"
+# key = "${CREDENTIALS_DIRECTORY}/key.pem"
+#
+# [[listen]]
+# proto = "doh"
+# addr = "0.0.0.0:443"
+# allow = ["192.168.0.0/16", "10.0.0.0/8"]
+# cert = "${CREDENTIALS_DIRECTORY}/cert.pem"
+# key = "${CREDENTIALS_DIRECTORY}/key.pem"
+# path = "/dns-query"
+
+# --- Upstreams (tried in order, failed ones are deprioritised for 30 s) -------
+# 'addrs' are bootstrap addresses: upstream hostnames are never resolved.
+# The name / URL host is used for SNI and certificate verification only.
+
+[[upstream]]
+type = "dot"
+name = "dns.quad9.net"
+addrs = ["9.9.9.9:853", "149.112.112.112:853", "[2620:fe::fe]:853"]
+
+[[upstream]]
+type = "doh"
+url = "https://cloudflare-dns.com/dns-query"
+addrs = ["1.1.1.1:443", "1.0.0.1:443", "[2606:4700:4700::1111]:443"]
+# ca_file = "/etc/dns-proxy/upstream-ca.pem"  # replaces the built-in Mozilla roots
