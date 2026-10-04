@@ -1,6 +1,6 @@
 # dns-proxy
 
-A small, no-frills DNS forwarder written in Rust.
+A small, no-frills DNS forwarder written in Rust. Documentation: <https://nullthrone.github.io/dns-proxy/>
 
 ```
 clients ── plain DNS (UDP/TCP) ─┐
@@ -30,12 +30,43 @@ clients ── plain DNS (UDP/TCP) ─┐
 - **Private logs.** Query names are never logged.
 - `#![forbid(unsafe_code)]`. The DNS wire handling is a small, bounds-checked parser with tests, including a random-input test that checks it never panics.
 
-## Build
+## Install
+
+Releases ship static Linux binaries for `x86_64` and `aarch64` (musl). Each release includes `SHA256SUMS` and a build provenance attestation:
+
+```sh
+VERSION=v0.1.0
+TARGET=x86_64-unknown-linux-musl   # or aarch64-unknown-linux-musl
+BASE=https://github.com/nullthrone/dns-proxy/releases/download/$VERSION
+curl -LO "$BASE/dns-proxy-$VERSION-$TARGET.tar.gz"
+curl -LO "$BASE/SHA256SUMS"
+sha256sum --ignore-missing -c SHA256SUMS
+gh attestation verify "dns-proxy-$VERSION-$TARGET.tar.gz" --repo nullthrone/dns-proxy
+tar xzf "dns-proxy-$VERSION-$TARGET.tar.gz"
+install -m 0755 "dns-proxy-$VERSION-$TARGET/dns-proxy" /usr/local/bin/
+```
+
+Or build from source:
 
 ```sh
 cargo build --release --locked
 install -m 0755 target/release/dns-proxy /usr/local/bin/
 ```
+
+### Releasing
+
+1. Bump `version` in `Cargo.toml`, then commit.
+2. Push a matching tag, e.g. `git tag v0.2.0 && git push origin v0.2.0`.
+
+The [release workflow](.github/workflows/release.yml) then:
+
+- tests and cross-builds with `cargo-zigbuild`;
+- refuses to run if the tag and `Cargo.toml` disagree;
+- publishes the archives with checksums and provenance.
+
+A tag with a suffix (e.g. `v0.2.0-rc.1`) becomes a pre-release.
+
+The documentation site lives in [`docs/`](docs/). It is deployed by the [Pages workflow](.github/workflows/pages.yml) on pushes to `main`. This requires *Settings → Pages → Source: GitHub Actions*. Its styling uses the Nullthrone design system tokens, vendored in `docs/assets/nullthrone.css`.
 
 ## Configure
 

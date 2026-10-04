@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 274 266" role="img" aria-label="Nullthrone">
+<title>Nullthrone</title>
+<g fill="currentColor" fill-rule="nonzero">
+<path d="M81,0 H193 V17 H81 Z"></path>
+<path fill-rule="evenodd" d="M61,21 H213 V266 H61 Z M92,97 A45,45 0 0 1 182,97 V199 A45,45 0 0 1 92,199 Z"></path>
+<path d="M39,62 L56,50 V266 H39 Z"></path>
+<path transform="translate(274,0) scale(-1,1)" d="M39,62 L56,50 V266 H39 Z"></path>
+<path d="M17,106 L34,94 V266 H17 Z"></path>
+<path transform="translate(274,0) scale(-1,1)" d="M17,106 L34,94 V266 H17 Z"></path>
+<path d="M0,257 H56 V266 H0 Z"></path>
+<path transform="translate(274,0) scale(-1,1)" d="M0,257 H56 V266 H0 Z"></path>
+</g></svg>
