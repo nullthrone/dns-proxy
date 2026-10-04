@@ -12,6 +12,14 @@ upstream_timeout_ms = 2000       # one attempt against one upstream
 query_timeout_ms = 5000          # overall, across failover attempts
 dot_pool_size = 8                # idle connections kept per DoT upstream
 
+# Resolution of 'allow_hosts' names (optional; defaults shown). Names are
+# resolved in the background through the upstreams below, never per query.
+[host_acl]
+refresh_min_ms = 30000           # lower bound of the refresh interval (TTL is clamped)
+refresh_max_ms = 300000          # upper bound
+max_stale_ms = 3600000           # keep last known addresses this long while lookups fail
+trigger_min_interval_ms = 15000  # a rejected client triggers a refresh at most this often
+
 # --- Inbound -----------------------------------------------------------------
 
 [[listen]]
@@ -37,10 +45,19 @@ allow = ["::1/128"]
 # DoT and DoH need a certificate. With the shipped systemd unit, use
 # LoadCredential= and reference the files via ${CREDENTIALS_DIRECTORY}.
 #
+# Clients with dynamic public IPs can be admitted by hostname (DynDNS).
+# A records match exactly (/32 by default); AAAA records match their /64
+# by default, since LAN clients use other addresses of the same prefix.
+# See README, "Dynamic client IPs", for the security trade-offs.
+#
 # [[listen]]
 # proto = "dot"
 # addr = "0.0.0.0:853"
 # allow = ["192.168.0.0/16", "10.0.0.0/8"]
+# allow_hosts = [
+#   "home.dyndns.example",
+#   { name = "office.dyndns.example", v6_prefix = 56 },
+# ]
 # cert = "${CREDENTIALS_DIRECTORY}/cert.pem"
 # key = "${CREDENTIALS_DIRECTORY}/key.pem"
 #
@@ -51,6 +68,17 @@ allow = ["::1/128"]
 # cert = "${CREDENTIALS_DIRECTORY}/cert.pem"
 # key = "${CREDENTIALS_DIRECTORY}/key.pem"
 # path = "/dns-query"
+#
+# Alternative to IP-based admission: a DoH endpoint behind a secret path,
+# usable from anywhere. Generate the token with e.g. `openssl rand -hex 16`.
+#
+# [[listen]]
+# proto = "doh"
+# addr = "0.0.0.0:8443"
+# allow = ["0.0.0.0/0", "::/0"]
+# cert = "${CREDENTIALS_DIRECTORY}/cert.pem"
+# key = "${CREDENTIALS_DIRECTORY}/key.pem"
+# path = "/dns-query/REPLACE-WITH-RANDOM-TOKEN"
 
 # --- Upstreams (tried in order, failed ones are deprioritised for 30 s) -------
 # 'addrs' are bootstrap addresses: upstream hostnames are never resolved.

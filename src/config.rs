@@ -16,6 +16,48 @@ pub struct Config {
     pub listeners: Vec<Listener>,
     #[serde(rename = "upstream", default)]
     pub upstreams: Vec<Upstream>,
+    #[serde(default)]
+    pub host_acl: HostAcl,
+}
+
+/// Timing of allowlist hostname resolution (`allow_hosts`).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct HostAcl {
+    /// Lower bound of the refresh interval (guards against tiny TTLs).
+    pub refresh_min_ms: u64,
+    /// Upper bound of the refresh interval.
+    pub refresh_max_ms: u64,
+    /// How long the last known addresses stay valid while resolution fails.
+    pub max_stale_ms: u64,
+    /// Minimum spacing of refreshes triggered by rejected clients.
+    pub trigger_min_interval_ms: u64,
+}
+
+impl Default for HostAcl {
+    fn default() -> Self {
+        Self {
+            refresh_min_ms: 30_000,
+            refresh_max_ms: 300_000,
+            max_stale_ms: 3_600_000,
+            trigger_min_interval_ms: 15_000,
+        }
+    }
+}
+
+impl HostAcl {
+    pub fn refresh_min(&self) -> Duration {
+        Duration::from_millis(self.refresh_min_ms)
+    }
+    pub fn refresh_max(&self) -> Duration {
+        Duration::from_millis(self.refresh_max_ms)
+    }
+    pub fn max_stale(&self) -> Duration {
+        Duration::from_millis(self.max_stale_ms)
+    }
+    pub fn trigger_min_interval(&self) -> Duration {
+        Duration::from_millis(self.trigger_min_interval_ms)
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -92,12 +134,70 @@ impl std::fmt::Display for Proto {
 pub struct Listener {
     pub proto: Proto,
     pub addr: SocketAddr,
-    /// Client networks allowed to use this listener. Mandatory.
+    /// Client networks allowed to use this listener.
+    #[serde(default)]
     pub allow: Vec<IpNet>,
+    /// Hostnames (e.g. DynDNS) whose current addresses are allowed.
+    #[serde(default)]
+    pub allow_hosts: Vec<HostSpec>,
     pub cert: Option<PathBuf>,
     pub key: Option<PathBuf>,
     /// DoH only: request path (default `/dns-query`).
     pub path: Option<String>,
+}
+
+/// An `allow_hosts` entry: a hostname, or a table with prefix lengths.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum HostSpec {
+    Name(String),
+    Detailed(HostDetail),
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HostDetail {
+    pub name: String,
+    pub v4_prefix: Option<u8>,
+    pub v6_prefix: Option<u8>,
+}
+
+/// Bounds keep a typo from allowing a huge range; use `allow` for that.
+const V4_PREFIX_RANGE: std::ops::RangeInclusive<u8> = 16..=32;
+const V6_PREFIX_RANGE: std::ops::RangeInclusive<u8> = 32..=128;
+
+impl HostSpec {
+    pub fn name(&self) -> &str {
+        match self {
+            HostSpec::Name(n) => n,
+            HostSpec::Detailed(d) => &d.name,
+        }
+    }
+    /// Prefix length applied to the host's IPv4 addresses (default 32).
+    pub fn v4_prefix(&self) -> u8 {
+        match self {
+            HostSpec::Detailed(HostDetail {
+                v4_prefix: Some(p), ..
+            }) => *p,
+            _ => 32,
+        }
+    }
+    /// Prefix length applied to the host's IPv6 addresses (default 64:
+    /// clients in a LAN use other addresses of the same prefix).
+    pub fn v6_prefix(&self) -> u8 {
+        match self {
+            HostSpec::Detailed(HostDetail {
+                v6_prefix: Some(p), ..
+            }) => *p,
+            _ => 64,
+        }
+    }
+    /// Normalised (lowercase, no trailing dot) and validated name.
+    pub fn normalized(&self) -> Result<String, String> {
+        let n = self.name();
+        crate::dns::encode_name(n).map_err(|_| format!("allow_hosts: invalid hostname {n:?}"))?;
+        Ok(n.trim_end_matches('.').to_ascii_lowercase())
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -149,6 +249,20 @@ impl Config {
                 return Err(format!("limits.{name} must be > 0"));
             }
         }
+        let h = &self.host_acl;
+        for (name, v) in [
+            ("refresh_min_ms", h.refresh_min_ms),
+            ("refresh_max_ms", h.refresh_max_ms),
+            ("max_stale_ms", h.max_stale_ms),
+            ("trigger_min_interval_ms", h.trigger_min_interval_ms),
+        ] {
+            if v == 0 {
+                return Err(format!("host_acl.{name} must be > 0"));
+            }
+        }
+        if h.refresh_min_ms > h.refresh_max_ms {
+            return Err("host_acl.refresh_min_ms must not exceed refresh_max_ms".into());
+        }
         if l.tcp_max_inflight_per_conn > u32::MAX as usize {
             return Err("limits.tcp_max_inflight_per_conn too large".into());
         }
@@ -162,10 +276,19 @@ impl Config {
 
         for li in &self.listeners {
             let ctx = format!("listen {} {}", li.proto, li.addr);
-            if li.allow.is_empty() {
+            if li.allow.is_empty() && li.allow_hosts.is_empty() {
                 return Err(format!(
-                    "{ctx}: 'allow' must not be empty (use \"0.0.0.0/0\" and \"::/0\" to deliberately run an open resolver)"
+                    "{ctx}: 'allow' or 'allow_hosts' must not be empty (use \"0.0.0.0/0\" and \"::/0\" to deliberately run an open resolver)"
                 ));
+            }
+            for h in &li.allow_hosts {
+                h.normalized().map_err(|e| format!("{ctx}: {e}"))?;
+                if !V4_PREFIX_RANGE.contains(&h.v4_prefix()) || !V6_PREFIX_RANGE.contains(&h.v6_prefix()) {
+                    return Err(format!(
+                        "{ctx}: allow_hosts {}: v4_prefix must be in 16..=32, v6_prefix in 32..=128",
+                        h.name()
+                    ));
+                }
             }
             let tls = matches!(li.proto, Proto::Dot | Proto::Doh);
             if tls != (li.cert.is_some() && li.key.is_some()) || li.cert.is_some() != li.key.is_some() {
@@ -254,6 +377,39 @@ mod tests {
     fn rejects_missing_or_empty_allow() {
         assert!(parse("[[listen]]\nproto = \"udp\"\naddr = \"127.0.0.1:53\"").is_err());
         assert!(parse("[[listen]]\nproto = \"udp\"\naddr = \"127.0.0.1:53\"\nallow = []").is_err());
+    }
+
+    #[test]
+    fn allow_hosts() {
+        let base = "[[listen]]\nproto = \"dot\"\naddr = \"0.0.0.0:853\"\ncert = \"c\"\nkey = \"k\"\n";
+        let c = parse(&format!(
+            "{base}allow_hosts = [\"Home.Dyn.Example.\", {{ name = \"office.dyn.example\", v6_prefix = 56 }}]"
+        ))
+        .unwrap();
+        let hosts = &c.listeners[0].allow_hosts;
+        assert!(c.listeners[0].allow.is_empty());
+        assert_eq!(hosts[0].normalized().unwrap(), "home.dyn.example");
+        assert_eq!((hosts[0].v4_prefix(), hosts[0].v6_prefix()), (32, 64));
+        assert_eq!((hosts[1].v4_prefix(), hosts[1].v6_prefix()), (32, 56));
+
+        for bad in [
+            "allow_hosts = []",
+            "allow_hosts = [\"1.2.3.4\"]",
+            "allow_hosts = [\"bad_name.example\"]",
+            "allow_hosts = [{ name = \"a.example\", v4_prefix = 8 }]",
+            "allow_hosts = [{ name = \"a.example\", v6_prefix = 16 }]",
+            "allow_hosts = [{ name = \"a.example\", bogus = 1 }]",
+        ] {
+            assert!(parse(&format!("{base}{bad}")).is_err(), "{bad}");
+        }
+        let li = format!("{base}allow_hosts = [\"a.example\"]\n");
+        assert!(
+            parse(&format!(
+                "{li}[host_acl]\nrefresh_min_ms = 10\nrefresh_max_ms = 5"
+            ))
+            .is_err()
+        );
+        assert!(parse(&format!("{li}[host_acl]\nmax_stale_ms = 0")).is_err());
     }
 
     #[test]

@@ -113,6 +113,15 @@ where
     let _ = tokio::time::timeout(SHUTDOWN_GRACE, conn).await;
 }
 
+/// Constant-time equality (only the length may leak).
+fn ct_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let diff = a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y));
+    std::hint::black_box(diff) == 0
+}
+
 fn status(code: StatusCode) -> Response<Full<Bytes>> {
     let mut r = Response::new(Full::default());
     *r.status_mut() = code;
@@ -120,7 +129,8 @@ fn status(code: StatusCode) -> Response<Full<Bytes>> {
 }
 
 async fn respond(req: Request<Incoming>, p: &Params) -> Response<Full<Bytes>> {
-    if req.uri().path() != p.path {
+    // The path may carry a secret token, so compare in constant time.
+    if !ct_eq(req.uri().path().as_bytes(), p.path.as_bytes()) {
         return status(StatusCode::NOT_FOUND);
     }
     let msg = match *req.method() {
@@ -169,4 +179,17 @@ async fn respond(req: Request<Incoming>, p: &Params) -> Response<Full<Bytes>> {
     r.headers_mut()
         .insert(CONTENT_TYPE, DNS_MESSAGE.parse().expect("static header"));
     r
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ct_eq;
+
+    #[test]
+    fn constant_time_eq() {
+        assert!(ct_eq(b"/dns-query/abc", b"/dns-query/abc"));
+        assert!(!ct_eq(b"/dns-query/abd", b"/dns-query/abc"));
+        assert!(!ct_eq(b"/dns-query", b"/dns-query/abc"));
+        assert!(ct_eq(b"", b""));
+    }
 }

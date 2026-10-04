@@ -9,10 +9,11 @@ use hyper_util::rt::{TokioExecutor, TokioIo};
 use rcgen::{BasicConstraints, CertificateParams, IsCa, Issuer, KeyPair};
 use rustls::pki_types::pem::PemObject;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName};
-use std::net::SocketAddr;
+use std::collections::HashMap;
+use std::net::{Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream, UdpSocket};
@@ -146,6 +147,57 @@ fn answer(q: &[u8]) -> Vec<u8> {
     r
 }
 
+/// Records the fake upstream serves for allowlist hostnames; names not in
+/// the zone get [`answer`].
+#[derive(Clone, Copy)]
+enum Rec {
+    A(Ipv4Addr),
+    NxDomain,
+    ServFail,
+}
+
+type Zone = Arc<Mutex<HashMap<String, Rec>>>;
+
+fn zone(entries: &[(&str, Rec)]) -> Zone {
+    Arc::new(Mutex::new(
+        entries.iter().map(|(n, r)| (n.to_string(), *r)).collect(),
+    ))
+}
+
+fn set(zone: &Zone, name: &str, rec: Rec) {
+    zone.lock().unwrap().insert(name.to_string(), rec);
+}
+
+fn answer_zone(q: &[u8], zone: &Zone) -> Vec<u8> {
+    let mut off = 12;
+    let mut labels = Vec::new();
+    while q[off] != 0 {
+        let len = q[off] as usize;
+        labels.push(String::from_utf8_lossy(&q[off + 1..off + 1 + len]).to_string());
+        off += 1 + len;
+    }
+    let qend = off + 5;
+    let qtype = u16::from_be_bytes([q[off + 1], q[off + 2]]);
+    let Some(rec) = zone.lock().unwrap().get(&labels.join(".")).copied() else {
+        return answer(q);
+    };
+    let (rcode, a) = match rec {
+        Rec::A(ip) if qtype == 1 => (0, Some(ip)),
+        Rec::A(_) => (0, None), // NODATA for AAAA
+        Rec::NxDomain => (3, None),
+        Rec::ServFail => (2, None),
+    };
+    let mut r = Vec::new();
+    r.extend_from_slice(&q[0..2]);
+    r.extend_from_slice(&[0x81, 0x80 | rcode, 0, 1, 0, u8::from(a.is_some()), 0, 0, 0, 0]);
+    r.extend_from_slice(&q[12..qend]);
+    if let Some(ip) = a {
+        r.extend_from_slice(&[0xC0, 0x0C, 0, 1, 0, 1, 0, 0, 0, 60, 0, 4]);
+        r.extend_from_slice(&ip.octets());
+    }
+    r
+}
+
 fn rcode(r: &[u8]) -> u8 {
     r[3] & 0x0F
 }
@@ -164,6 +216,10 @@ fn assert_answer(r: &[u8], id: u16) {
 // ---------------------------------------------------------------- fake upstreams
 
 async fn fake_dot(pki: &Pki, name: &str) -> SocketAddr {
+    fake_dot_zone(pki, name, zone(&[])).await
+}
+
+async fn fake_dot_zone(pki: &Pki, name: &str, zone: Zone) -> SocketAddr {
     let acc = pki.acceptor(name, &[]);
     let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = l.local_addr().unwrap();
@@ -171,6 +227,7 @@ async fn fake_dot(pki: &Pki, name: &str) -> SocketAddr {
         loop {
             let (tcp, _) = l.accept().await.unwrap();
             let acc = acc.clone();
+            let zone = zone.clone();
             tokio::spawn(async move {
                 let Ok(mut s) = acc.accept(tcp).await else { return };
                 loop {
@@ -179,7 +236,7 @@ async fn fake_dot(pki: &Pki, name: &str) -> SocketAddr {
                     if s.read_exact(&mut q).await.is_err() {
                         return;
                     }
-                    let a = answer(&q);
+                    let a = answer_zone(&q, &zone);
                     let mut out = (a.len() as u16).to_be_bytes().to_vec();
                     out.extend_from_slice(&a);
                     if s.write_all(&out).await.is_err() {
@@ -260,6 +317,11 @@ struct Running {
 }
 
 async fn start_proxy(pki: &Pki, upstreams: &str, allow: &str) -> Running {
+    start_proxy_acl(pki, upstreams, &format!("allow = [{allow}]"), "").await
+}
+
+/// `acl` is inserted into every listener, `extra` before the listeners.
+async fn start_proxy_acl(pki: &Pki, upstreams: &str, acl: &str, extra: &str) -> Running {
     let (c, k) = pki.leaf("localhost");
     let (c, k) = (c.display(), k.display());
     let toml = format!(
@@ -268,27 +330,29 @@ async fn start_proxy(pki: &Pki, upstreams: &str, allow: &str) -> Running {
         upstream_timeout_ms = 1000
         query_timeout_ms = 3000
 
+        {extra}
+
         [[listen]]
         proto = "udp"
         addr = "127.0.0.1:0"
-        allow = [{allow}]
+        {acl}
 
         [[listen]]
         proto = "tcp"
         addr = "127.0.0.1:0"
-        allow = [{allow}]
+        {acl}
 
         [[listen]]
         proto = "dot"
         addr = "127.0.0.1:0"
-        allow = [{allow}]
+        {acl}
         cert = "{c}"
         key = "{k}"
 
         [[listen]]
         proto = "doh"
         addr = "127.0.0.1:0"
-        allow = [{allow}]
+        {acl}
         cert = "{c}"
         key = "{k}"
 
@@ -696,4 +760,174 @@ async fn check_rejects_missing_certificate() {
     )
     .unwrap();
     assert!(dns_proxy::check(&cfg).is_err());
+}
+
+// ---------------------------------------------------------------- allow_hosts
+
+/// Polls over UDP until the proxy answers (`true`) or ignores (`false`)
+/// 127.0.0.1, within `within`.
+async fn becomes(udp: SocketAddr, answered: bool, within: Duration) -> bool {
+    let deadline = tokio::time::Instant::now() + within;
+    while tokio::time::Instant::now() < deadline {
+        let r = udp_query(
+            udp,
+            &query(0x8001, "example.com", None),
+            Duration::from_millis(150),
+        )
+        .await;
+        if r.is_some() == answered {
+            return true;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    false
+}
+
+fn host_acl(refresh_min: u64, refresh_max: u64, max_stale: u64, trigger: u64) -> String {
+    format!(
+        "[host_acl]\nrefresh_min_ms = {refresh_min}\nrefresh_max_ms = {refresh_max}\nmax_stale_ms = {max_stale}\ntrigger_min_interval_ms = {trigger}\n"
+    )
+}
+
+const LOCALHOST: Rec = Rec::A(Ipv4Addr::new(127, 0, 0, 1));
+const ELSEWHERE: Rec = Rec::A(Ipv4Addr::new(127, 0, 0, 2));
+
+#[tokio::test]
+async fn allow_hosts_follows_address_changes() {
+    let pki = Pki::new();
+    let z = zone(&[("client.test", LOCALHOST)]);
+    let up = fake_dot_zone(&pki, "upstream.test", z.clone()).await;
+    // Static allow does not match; only the hostname does.
+    let acl = "allow = [\"10.0.0.0/8\"]\nallow_hosts = [\"Client.Test.\"]";
+    let p = start_proxy_acl(
+        &pki,
+        &dot_upstream(&pki, "upstream.test", up),
+        acl,
+        &host_acl(100, 200, 60_000, 50),
+    )
+    .await;
+
+    assert!(
+        becomes(p.udp, true, Duration::from_secs(3)).await,
+        "allowed once resolved"
+    );
+    assert_answer(
+        &tcp_query(p.tcp, &query(0x8101, "example.com", None))
+            .await
+            .unwrap(),
+        0x8101,
+    );
+
+    set(&z, "client.test", ELSEWHERE);
+    assert!(
+        becomes(p.udp, false, Duration::from_secs(3)).await,
+        "rejected after move"
+    );
+    assert!(
+        tcp_query(p.tcp, &query(0x8102, "example.com", None))
+            .await
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn rejected_client_triggers_refresh() {
+    let pki = Pki::new();
+    let z = zone(&[("client.test", ELSEWHERE)]);
+    let up = fake_dot_zone(&pki, "upstream.test", z.clone()).await;
+    // Scheduled refreshes only every 60 s: only the trigger can help.
+    let p = start_proxy_acl(
+        &pki,
+        &dot_upstream(&pki, "upstream.test", up),
+        "allow_hosts = [\"client.test\"]",
+        &host_acl(60_000, 60_000, 60_000, 100),
+    )
+    .await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    set(&z, "client.test", LOCALHOST);
+    assert!(
+        becomes(p.udp, true, Duration::from_secs(3)).await,
+        "refreshed on reject"
+    );
+}
+
+#[tokio::test]
+async fn allow_hosts_keeps_addresses_until_stale() {
+    let pki = Pki::new();
+    let z = zone(&[("client.test", LOCALHOST)]);
+    let up = fake_dot_zone(&pki, "upstream.test", z.clone()).await;
+    let p = start_proxy_acl(
+        &pki,
+        &dot_upstream(&pki, "upstream.test", up),
+        "allow_hosts = [\"client.test\"]",
+        &host_acl(100, 200, 1_000, 50),
+    )
+    .await;
+    assert!(becomes(p.udp, true, Duration::from_secs(3)).await);
+
+    set(&z, "client.test", Rec::ServFail);
+    let failing_since = std::time::Instant::now();
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(
+        udp_query(p.udp, &query(0x8201, "example.com", None), WAIT)
+            .await
+            .is_some(),
+        "still allowed within max_stale"
+    );
+    assert!(
+        becomes(p.udp, false, Duration::from_secs(3)).await,
+        "dropped after max_stale"
+    );
+    assert!(failing_since.elapsed() >= Duration::from_millis(700));
+}
+
+#[tokio::test]
+async fn allow_hosts_nxdomain_rejects_at_once() {
+    let pki = Pki::new();
+    let z = zone(&[("client.test", LOCALHOST)]);
+    let up = fake_dot_zone(&pki, "upstream.test", z.clone()).await;
+    let p = start_proxy_acl(
+        &pki,
+        &dot_upstream(&pki, "upstream.test", up),
+        "allow_hosts = [\"client.test\"]",
+        &host_acl(100, 200, 600_000, 50),
+    )
+    .await;
+    assert!(becomes(p.udp, true, Duration::from_secs(3)).await);
+    set(&z, "client.test", Rec::NxDomain);
+    assert!(becomes(p.udp, false, Duration::from_secs(3)).await);
+}
+
+#[tokio::test]
+async fn doh_secret_path() {
+    let pki = Pki::new();
+    let up = fake_dot(&pki, "upstream.test").await;
+    let (c, k) = pki.leaf("localhost");
+    let toml = format!(
+        "[[listen]]\nproto = \"doh\"\naddr = \"127.0.0.1:0\"\nallow = [\"0.0.0.0/0\", \"::/0\"]\n\
+         cert = \"{}\"\nkey = \"{}\"\npath = \"/dns-query/s3cr3t\"\n{}",
+        c.display(),
+        k.display(),
+        dot_upstream(&pki, "upstream.test", up)
+    );
+    let proxy = dns_proxy::start(Config::parse(&toml).unwrap()).await.unwrap();
+    let addr = proxy.bound[0].1;
+    let q = query(0, "example.com", None);
+    let (st, body) = doh(
+        &pki,
+        addr,
+        post("/dns-query/s3cr3t", "application/dns-message", q.clone()),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    assert_answer(&body, 0);
+    for wrong in [
+        "/dns-query",
+        "/dns-query/s3cr3",
+        "/dns-query/s3cr3t/",
+        "/dns-query/S3CR3T",
+    ] {
+        let (st, _) = doh(&pki, addr, post(wrong, "application/dns-message", q.clone())).await;
+        assert_eq!(st, StatusCode::NOT_FOUND, "{wrong}");
+    }
 }
