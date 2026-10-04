@@ -1,0 +1,149 @@
+/* Nullthrone Design System tokens, vendored from Claude Design
+   (project 88786eea-8130-44cb-ad5f-43f563687fb9: tokens/*.css). Do not edit
+   here; update from the design system instead. Fonts are loaded in index.html. */
+
+/* --- tokens/colors.css --- */
+:root{
+color-scheme:light;
+/* Base — ink & paper */
+--ink-950:#141317;--ink-900:#1E1C21;--ink-700:#3A3740;--ink-500:#6E6B72;--ink-400:#928F96;--ink-300:#B6B3B8;--ink-200:#D9D6D3;--ink-100:#E9E6DF;
+--paper:#F4F2EC;--paper-raised:#FBFAF6;--paper-white:#FFFFFF;
+/* Brass — the single accent */
+--brass-700:#7A5A1F;--brass-600:#8F6B26;--brass-500:#A87E2F;--brass-400:#C09A4B;--brass-200:#E4D5AC;--brass-100:#EFE6CD;
+/* Signals — muted, architectural */
+--green-600:#2F6B4F;--green-100:#DFEAE3;
+--amber-600:#A05E14;--amber-100:#F3E5D2;
+--red-600:#8C2F2E;--red-100:#F0DDDC;
+/* Semantic aliases */
+--text-body:var(--ink-950);--text-muted:var(--ink-500);--text-faint:var(--ink-400);--text-inverse:var(--paper);--text-accent:var(--brass-600);
+--surface-page:var(--paper);--surface-card:var(--paper-raised);--surface-inset:var(--ink-100);--surface-inverse:var(--ink-950);
+--border-line:var(--ink-200);--border-strong:var(--ink-950);--border-mid:var(--ink-300);
+--accent:var(--brass-500);--accent-hover:var(--brass-600);--accent-active:var(--brass-700);
+--focus-ring:0 0 0 2px var(--paper),0 0 0 4px var(--brass-500);
+--ok:var(--green-600);--ok-bg:var(--green-100);--warn:var(--amber-600);--warn-bg:var(--amber-100);--danger:var(--red-600);--danger-bg:var(--red-100);
+--press-ink:#000000;--danger-hover:#7A2827;--danger-active:#682221;
+--overlay-scrim:rgba(20,19,23,.5);
+}
+
+/* Dark — the brand inverted at primitive level. ink and paper swap roles.
+   Ratios follow the kenny Fleet Console (t11z/kenny). Elevation is shadow, never a lighter plane. */
+[data-theme="dark"]{
+color-scheme:dark;
+--ink-950:#EFEDE7;--ink-900:#DEDBD4;--ink-700:#B4B0A9;--ink-500:#8A8781;--ink-400:#6E6B67;--ink-300:#4C4952;--ink-200:#33313A;--ink-100:#100F13;
+--paper:#17161A;--paper-raised:#1F1D22;--paper-white:#2B2930;
+--brass-700:#B98B36;--brass-600:#DCB768;--brass-500:#C89E4A;--brass-400:#8F6B26;--brass-200:#4A3A1B;--brass-100:#2A2110;
+--green-600:#6FA98C;--green-100:#1A2A23;
+--amber-600:#D9853C;--amber-100:#2C2117;
+--red-600:#CB6A62;--red-100:#2C1B1B;
+--press-ink:#8A8781;--danger-hover:#A9524E;--danger-active:#8E4341;
+--overlay-scrim:rgba(6,6,8,.66);
+}
+@media (prefers-color-scheme:dark){
+:root{
+color-scheme:dark;
+--ink-950:#EFEDE7;--ink-900:#DEDBD4;--ink-700:#B4B0A9;--ink-500:#8A8781;--ink-400:#6E6B67;--ink-300:#4C4952;--ink-200:#33313A;--ink-100:#100F13;
+--paper:#17161A;--paper-raised:#1F1D22;--paper-white:#2B2930;
+--brass-700:#B98B36;--brass-600:#DCB768;--brass-500:#C89E4A;--brass-400:#8F6B26;--brass-200:#4A3A1B;--brass-100:#2A2110;
+--green-600:#6FA98C;--green-100:#1A2A23;
+--amber-600:#D9853C;--amber-100:#2C2117;
+--red-600:#CB6A62;--red-100:#2C1B1B;
+--press-ink:#8A8781;--danger-hover:#A9524E;--danger-active:#8E4341;
+--overlay-scrim:rgba(6,6,8,.66);
+}
+}
+
+/* Light re-assertion — last in cascade so [data-theme="light"] wins over the OS-dark default,
+   letting a region turn back into the light inside a dark ground. */
+[data-theme="light"]{
+color-scheme:light;
+/* Base — ink & paper */
+--ink-950:#141317;--ink-900:#1E1C21;--ink-700:#3A3740;--ink-500:#6E6B72;--ink-400:#928F96;--ink-300:#B6B3B8;--ink-200:#D9D6D3;--ink-100:#E9E6DF;
+--paper:#F4F2EC;--paper-raised:#FBFAF6;--paper-white:#FFFFFF;
+/* Brass — the single accent */
+--brass-700:#7A5A1F;--brass-600:#8F6B26;--brass-500:#A87E2F;--brass-400:#C09A4B;--brass-200:#E4D5AC;--brass-100:#EFE6CD;
+/* Signals — muted, architectural */
+--green-600:#2F6B4F;--green-100:#DFEAE3;
+--amber-600:#A05E14;--amber-100:#F3E5D2;
+--red-600:#8C2F2E;--red-100:#F0DDDC;
+/* Semantic aliases */
+--text-body:var(--ink-950);--text-muted:var(--ink-500);--text-faint:var(--ink-400);--text-inverse:var(--paper);--text-accent:var(--brass-600);
+--surface-page:var(--paper);--surface-card:var(--paper-raised);--surface-inset:var(--ink-100);--surface-inverse:var(--ink-950);
+--border-line:var(--ink-200);--border-strong:var(--ink-950);--border-mid:var(--ink-300);
+--accent:var(--brass-500);--accent-hover:var(--brass-600);--accent-active:var(--brass-700);
+--focus-ring:0 0 0 2px var(--paper),0 0 0 4px var(--brass-500);
+--ok:var(--green-600);--ok-bg:var(--green-100);--warn:var(--amber-600);--warn-bg:var(--amber-100);--danger:var(--red-600);--danger-bg:var(--red-100);
+--press-ink:#000000;--danger-hover:#7A2827;--danger-active:#682221;
+--overlay-scrim:rgba(20,19,23,.5);
+}
+
+/* --- tokens/typography.css --- */
+:root{
+--font-display:'Jost',system-ui,sans-serif;
+--font-body:'Public Sans',system-ui,sans-serif;
+--font-mono:'JetBrains Mono',ui-monospace,monospace;
+/* Scale */
+--display-xl:56px;--display-lg:40px;--display-md:28px;--display-sm:20px;
+--text-lg:18px;--text-md:15px;--text-sm:13px;--text-xs:11px;
+/* Tracking — letterspaced caps are a core brand motif */
+--track-caps:0.14em;--track-caps-wide:0.22em;--track-display:0.01em;
+--leading-tight:1.15;--leading-body:1.55;
+--weight-display:500;--weight-body:400;--weight-strong:600;
+}
+
+/* --- tokens/spacing.css --- */
+:root{
+--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:24px;--space-6:32px;--space-7:48px;--space-8:64px;--space-9:96px;
+--control-h-sm:28px;--control-h-md:36px;--control-h-lg:44px;
+--container-max:1120px;--container-pad:var(--space-6);
+}
+
+/* --- tokens/effects.css --- */
+:root{
+/* Corners are square. --radius-1 exists only for tiny inner elements. */
+--radius-0:0px;--radius-1:2px;
+--line:1px solid var(--border-line);--line-strong:1px solid var(--border-strong);
+--shadow-1:0 1px 2px rgba(20,19,23,.07);--shadow-2:0 2px 8px rgba(20,19,23,.10);--shadow-3:0 12px 32px rgba(20,19,23,.16);
+--ease:cubic-bezier(.2,0,0,1);/* @kind other */
+--dur-fast:120ms;/* @kind other */
+--dur-med:200ms;/* @kind other */
+--dur-slow:320ms;/* @kind other */
+}
+
+[data-theme="dark"]{
+--shadow-1:0 1px 2px rgba(0,0,0,.45);
+--shadow-2:0 2px 10px rgba(0,0,0,.55);
+--shadow-3:0 14px 38px rgba(0,0,0,.66);
+}
+@media (prefers-color-scheme:dark){
+:root{
+--shadow-1:0 1px 2px rgba(0,0,0,.45);
+--shadow-2:0 2px 10px rgba(0,0,0,.55);
+--shadow-3:0 14px 38px rgba(0,0,0,.66);
+}
+}
+
+[data-theme="light"]{
+/* Corners are square. --radius-1 exists only for tiny inner elements. */
+--radius-0:0px;--radius-1:2px;
+--line:1px solid var(--border-line);--line-strong:1px solid var(--border-strong);
+--shadow-1:0 1px 2px rgba(20,19,23,.07);--shadow-2:0 2px 8px rgba(20,19,23,.10);--shadow-3:0 12px 32px rgba(20,19,23,.16);
+--ease:cubic-bezier(.2,0,0,1);/* @kind other */
+--dur-fast:120ms;/* @kind other */
+--dur-med:200ms;/* @kind other */
+--dur-slow:320ms;/* @kind other */
+}
+
+/* --- tokens/motion.css --- */
+/* Motion primitives — fades and small translates only; no bounces. */
+@keyframes nt-fade-up{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes nt-fade-in{from{opacity:0}to{opacity:1}}
+@keyframes nt-bar-pulse{0%,100%{transform:scaleY(.35);opacity:.5}50%{transform:scaleY(1);opacity:1}}
+@keyframes nt-indeterminate{0%{left:-35%}100%{left:100%}}
+
+/* --- tokens/base.css --- */
+body{font-family:var(--font-body);font-size:var(--text-md);line-height:var(--leading-body);color:var(--text-body);background:var(--surface-page);margin:0;-webkit-font-smoothing:antialiased}
+h1,h2,h3,h4{font-family:var(--font-display);font-weight:var(--weight-display);line-height:var(--leading-tight);letter-spacing:var(--track-display);margin:0}
+code,pre{font-family:var(--font-mono)}
+a{color:var(--text-body);text-decoration:underline;text-decoration-color:var(--brass-500);text-underline-offset:3px;transition:color var(--dur-fast) var(--ease)}
+a:hover{color:var(--brass-600)}
+::selection{background:var(--brass-200)}

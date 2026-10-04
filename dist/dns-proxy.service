@@ -1,0 +1,61 @@
+[Unit]
+Description=dns-proxy (plain DNS, DoT, DoH)
+Documentation=https://github.com/nullthrone/dns-proxy
+After=network-online.target
+Wants=network-online.target
+Before=nss-lookup.target
+Wants=nss-lookup.target
+
+[Service]
+Type=exec
+ExecStart=/usr/local/bin/dns-proxy --config /etc/dns-proxy/config.toml
+Restart=on-failure
+RestartSec=2
+
+# For DoT/DoH listeners: systemd copies the files into a private directory
+# readable only by the service; reference them in the config as
+# ${CREDENTIALS_DIRECTORY}/cert.pem and ${CREDENTIALS_DIRECTORY}/key.pem.
+# The originals can stay root-only. Restart the service after renewal.
+#LoadCredential=cert.pem:/etc/dns-proxy/cert.pem
+#LoadCredential=key.pem:/etc/dns-proxy/key.pem
+
+# Unprivileged, transient user; only allowed to bind ports < 1024.
+DynamicUser=yes
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=yes
+
+# Filesystem
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectProc=invisible
+ProcSubset=pid
+UMask=0077
+
+# Kernel
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RemoveIPC=yes
+
+# Network and syscalls
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+SystemCallErrorNumber=EPERM
+
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dns-proxy · Nullthrone</title>
+<meta name="description" content="A small DNS proxy in Rust: plain DNS, DoT and DoH in; only encrypted DNS out. Closed by default.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="assets/nullthrone-mark.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,300..700;1,400&family=Public+Sans:ital,wght@0,400..700;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="assets/nullthrone.css">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<a class="skip caps" href="#main">Skip to content</a>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="mark" viewBox="0 0 274 266">
+    <g fill="currentColor">
+      <path d="M81,0 H193 V17 H81 Z"/>
+      <path fill-rule="evenodd" d="M61,21 H213 V266 H61 Z M92,97 A45,45 0 0 1 182,97 V199 A45,45 0 0 1 92,199 Z"/>
+      <path d="M39,62 L56,50 V266 H39 Z"/>
+      <path transform="translate(274,0) scale(-1,1)" d="M39,62 L56,50 V266 H39 Z"/>
+      <path d="M17,106 L34,94 V266 H17 Z"/>
+      <path transform="translate(274,0) scale(-1,1)" d="M17,106 L34,94 V266 H17 Z"/>
+      <path d="M0,257 H56 V266 H0 Z"/>
+      <path transform="translate(274,0) scale(-1,1)" d="M0,257 H56 V266 H0 Z"/>
+    </g>
+  </symbol>
+</svg>
+
+<header class="inverse">
+  <div class="site-header">
+    <div class="container">
+      <a class="brand" href="#top" aria-label="Nullthrone dns-proxy, top of page">
+        <svg viewBox="0 0 274 266" aria-hidden="true"><use href="#mark"/></svg>
+        <span class="caps wordmark">Nullthrone</span>
+        <span class="caps product">dns-proxy</span>
+      </a>
+      <nav class="site-nav" aria-label="Sections">
+        <a class="caps" href="#install">Install</a>
+        <a class="caps" href="#configure">Configure</a>
+        <a class="caps" href="#dynamic">Dynamic IPs</a>
+        <a class="caps" href="#security">Security</a>
+        <a class="caps keep" href="https://github.com/nullthrone/dns-proxy">Source</a>
+      </nav>
+    </div>
+  </div>
+
+  <div class="hero" id="top">
+    <div class="container">
+      <div class="eyebrow">Open source · MIT license · Rust</div>
+      <h1>A DNS proxy. Nothing more.</h1>
+      <p class="lead">Plain DNS, DNS over TLS and DNS over HTTPS in. Only encrypted DNS out. Every listener is closed until you name who may use it.</p>
+      <div class="actions">
+        <a class="btn btn-accent" href="https://github.com/nullthrone/dns-proxy/releases/latest">Download</a>
+        <a class="btn btn-outline-inverse" href="https://github.com/nullthrone/dns-proxy">Read the source</a>
+      </div>
+      <div class="ornament" aria-hidden="true">
+        <span></span><svg viewBox="0 0 274 266"><use href="#mark"/></svg><span></span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+  <div class="container">
+
+    <section id="overview" aria-labelledby="overview-title">
+      <div class="section-head">
+        <div class="eyebrow">Scope</div>
+        <h2 id="overview-title">What it does, and what it does not</h2>
+        <p>A forwarder for one job: take DNS queries from clients you allow and pass them to resolvers you trust, encrypted. Everything else stays out, because every feature is code you have to trust.</p>
+      </div>
+      <div class="grid-3">
+        <div class="card">
+          <div class="eyebrow">Inbound</div>
+          <h3>Four protocols</h3>
+          <ul class="plain">
+            <li>Plain DNS over UDP and TCP</li>
+            <li>DNS over TLS (RFC 7858)</li>
+            <li>DNS over HTTPS (RFC 8484), HTTP/1.1 and HTTP/2, GET and POST</li>
+            <li>Allowlist per listener: networks and hostnames</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="eyebrow">Outbound</div>
+          <h3>Encrypted only</h3>
+          <ul class="plain">
+            <li>DoT or DoH upstreams, tried in order</li>
+            <li>A failing upstream is moved to the back for 30 s</li>
+            <li>Upstreams reached by configured IPs; no plain-DNS bootstrap</li>
+            <li>Certificates verified against Mozilla roots or your CA</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="eyebrow">Not included</div>
+          <h3>By decision</h3>
+          <ul class="plain">
+            <li>No cache, no filtering, no statistics endpoint</li>
+            <li>No ACME; certificates come from files</li>
+            <li>No HTTP/3</li>
+            <li>No DNSSEC validation; the upstream resolver validates</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="install" aria-labelledby="install-title">
+      <div class="section-head">
+        <div class="eyebrow">Install</div>
+        <h2 id="install-title">Three steps</h2>
+        <p>Releases ship static binaries for <code>x86_64</code> and <code>aarch64</code> Linux. They have no runtime dependencies. Each archive is listed in <code>SHA256SUMS</code> and carries a build provenance attestation from GitHub Actions.</p>
+      </div>
+      <div class="steps">
+        <div class="step">
+          <div>
+            <h3>Download and verify</h3>
+            <p>Check the checksum, then check that the archive was built by this repository's release workflow.</p>
+<pre><code>VERSION=v0.1.0
+TARGET=x86_64-unknown-linux-musl   <span class="c"># or aarch64-unknown-linux-musl</span>
+BASE=https://github.com/nullthrone/dns-proxy/releases/download/$VERSION
+
+curl -LO "$BASE/dns-proxy-$VERSION-$TARGET.tar.gz"
+curl -LO "$BASE/SHA256SUMS"
+sha256sum --ignore-missing -c SHA256SUMS
+gh attestation verify "dns-proxy-$VERSION-$TARGET.tar.gz" --repo nullthrone/dns-proxy</code></pre>
+          </div>
+        </div>
+        <div class="step">
+          <div>
+            <h3>Install and check the configuration</h3>
+            <p><code>--check</code> validates the configuration and loads all certificates without binding a socket.</p>
+<pre><code>tar xzf "dns-proxy-$VERSION-$TARGET.tar.gz" &amp;&amp; cd "dns-proxy-$VERSION-$TARGET"
+install -m 0755 dns-proxy /usr/local/bin/
+install -d /etc/dns-proxy
+install -m 0644 config.example.toml /etc/dns-proxy/config.toml
+dns-proxy --config /etc/dns-proxy/config.toml --check</code></pre>
+          </div>
+        </div>
+        <div class="step">
+          <div>
+            <h3>Run under systemd</h3>
+            <p>The unit runs the proxy as a transient unprivileged user. Its only capability is binding ports below 1024, inside a strict sandbox. Certificates are passed in with <code>LoadCredential=</code>, so the private key can stay readable by root only.</p>
+<pre><code>install -m 0644 dist/dns-proxy.service /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now dns-proxy
+systemd-analyze security dns-proxy</code></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="configure" aria-labelledby="configure-title">
+      <div class="section-head">
+        <div class="eyebrow">Configure</div>
+        <h2 id="configure-title">One TOML file</h2>
+        <p>Unknown keys are errors. Missing allowlists are errors. Nothing ambiguous is filled in with a default.</p>
+      </div>
+      <div class="split">
+<pre><code><span class="c"># Local clients, plain DNS</span>
+[[listen]]
+proto = "udp"
+addr = "127.0.0.1:53"
+allow = ["127.0.0.0/8"]
+
+<span class="c"># Remote clients, DNS over TLS</span>
+[[listen]]
+proto = "dot"
+addr = "0.0.0.0:853"
+allow = ["192.168.0.0/16"]
+allow_hosts = ["home.dyndns.example"]
+cert = "${CREDENTIALS_DIRECTORY}/cert.pem"
+key = "${CREDENTIALS_DIRECTORY}/key.pem"
+
+[[upstream]]
+type = "dot"
+name = "dns.quad9.net"
+addrs = ["9.9.9.9:853", "149.112.112.112:853"]
+
+[[upstream]]
+type = "doh"
+url = "https://cloudflare-dns.com/dns-query"
+addrs = ["1.1.1.1:443", "1.0.0.1:443"]</code></pre>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th scope="col">Section</th><th scope="col">Keys</th></tr></thead>
+            <tbody>
+              <tr><td><code>[[listen]]</code></td><td><code>proto</code> (<code>udp</code>, <code>tcp</code>, <code>dot</code>, <code>doh</code>), <code>addr</code>, <code>allow</code> and/or <code>allow_hosts</code>. For <code>dot</code> and <code>doh</code> also <code>cert</code> and <code>key</code>; for <code>doh</code> optionally <code>path</code>.</td></tr>
+              <tr><td><code>[[upstream]]</code></td><td><code>type = "dot"</code> with <code>name</code>, or <code>type = "doh"</code> with <code>url</code>. Always <code>addrs</code>: the IPs to connect to. Optional <code>ca_file</code>.</td></tr>
+              <tr><td><code>[limits]</code></td><td>Concurrency caps and timeouts. All optional.</td></tr>
+              <tr><td><code>[host_acl]</code></td><td>Refresh timing for <code>allow_hosts</code>. All optional.</td></tr>
+            </tbody>
+          </table>
+          <p class="table-note">The full reference with all defaults is <a href="https://github.com/nullthrone/dns-proxy/blob/main/config.example.toml">config.example.toml</a>.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="dynamic" aria-labelledby="dynamic-title">
+      <div class="section-head">
+        <div class="eyebrow">Dynamic client IPs</div>
+        <h2 id="dynamic-title">Admit clients that move</h2>
+        <p>Clients on networks with a changing public IP can use the proxy over the internet. The upstreams then see one static address. There are two ways to admit such clients. They are not equally strong.</p>
+      </div>
+      <div class="grid-3">
+        <div class="card span-2">
+          <div class="eyebrow">By hostname</div>
+          <h3><code>allow_hosts</code> <span class="badge badge-neutral">IP-based</span></h3>
+          <p>The proxy resolves DynDNS names in the background, through the encrypted upstreams. It never resolves per query and never uses the system resolver.</p>
+          <ul class="plain">
+            <li>The refresh follows the record TTL. A rejected client triggers an early refresh, at most every 15 s.</li>
+            <li>Fail closed until the first answer. NXDOMAIN removes the addresses at once.</li>
+            <li>If lookups fail, the last addresses stay valid for one hour.</li>
+            <li>IPv4 matches the exact address. IPv6 matches its /64; adjust with <code>v6_prefix</code>.</li>
+          </ul>
+          <p class="note">What you trust: the DynDNS account becomes the credential. Behind CGNAT, the IPv4 is shared with strangers. After an IP change, the old address stays admitted until the next refresh. Use DoT or DoH for such listeners; plain UDP sources can be spoofed.</p>
+        </div>
+        <div class="card">
+          <div class="eyebrow">By token</div>
+          <h3>Secret DoH path <span class="badge badge-brass">Stronger</span></h3>
+          <p>Admission by credential, independent of the client's address. The path travels inside TLS and is compared in constant time.</p>
+<pre><code>[[listen]]
+proto = "doh"
+addr = "0.0.0.0:443"
+allow = ["0.0.0.0/0", "::/0"]
+path = "/dns-query/&lt;token&gt;"</code></pre>
+          <p class="note">Generate the token with <code>openssl rand -hex 16</code>. Treat the client configuration like a password.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="security" aria-labelledby="security-title">
+      <div class="section-head">
+        <div class="eyebrow">Security model</div>
+        <h2 id="security-title">Properties, stated plainly</h2>
+      </div>
+      <hr class="double-rule">
+      <div class="ruled-2">
+        <div><h3>Closed by default</h3><p>A listener without <code>allow</code> or <code>allow_hosts</code> is a configuration error. An open resolver requires writing <code>0.0.0.0/0</code> on purpose.</p></div>
+        <div><h3>No plain DNS of its own</h3><p>Upstreams are reached by IP. Hostnames serve only SNI and certificate checks. Allowlist names resolve through the encrypted upstreams.</p></div>
+        <div><h3>Verified responses</h3><p>An upstream answer must repeat the question and the expected ID. DoT queries carry a fresh random ID; DoH queries use ID 0.</p></div>
+        <div><h3>Bounded amplification</h3><p>UDP answers never exceed the client's EDNS size or 1232 bytes. Larger answers are truncated, and the client retries over TCP.</p></div>
+        <div><h3>Bounded resources</h3><p>Connections, queries in flight, handshakes, idle time, headers and request bodies all have limits.</p></div>
+        <div><h3>Private by default</h3><p>Query names are never logged. Failures are logged once per outage, not once per query.</p></div>
+        <div><h3>No unsafe code</h3><p><code>#![forbid(unsafe_code)]</code>. The DNS parser checks every bound and is tested against random input.</p></div>
+        <div><h3>Verifiable releases</h3><p>Static binaries, SHA-256 checksums and signed build provenance. Actions in the release workflow are pinned to commit hashes.</p></div>
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<footer class="inverse site-footer">
+  <div class="container">
+    <a class="brand" href="https://github.com/nullthrone" aria-label="Nullthrone on GitHub">
+      <svg viewBox="0 0 274 266" aria-hidden="true"><use href="#mark"/></svg>
+      <span class="caps wordmark">Nullthrone</span>
+    </a>
+    <p>MIT license. <a href="https://github.com/nullthrone/dns-proxy">Source</a> · <a href="https://github.com/nullthrone/dns-proxy/releases">Releases</a> · <a href="https://github.com/nullthrone/dns-proxy/issues">Issues</a></p>
+  </div>
+</footer>
+</body>
+</html>

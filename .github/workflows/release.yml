@@ -1,0 +1,99 @@
+name: Release
+
+# Push a tag `vX.Y.Z` matching the version in Cargo.toml to publish a release
+# with static Linux binaries, SHA256SUMS and build provenance attestations.
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        target: [x86_64-unknown-linux-musl, aarch64-unknown-linux-musl]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Check tag matches Cargo.toml version
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match Cargo.toml version $version." >&2
+            exit 1
+          fi
+
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
+        with:
+          targets: ${{ matrix.target }}
+
+      # zig serves as C compiler/linker for ring when cross-compiling to musl.
+      # setup-python avoids the runner's externally managed system Python.
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: Install cargo-zigbuild
+        run: pip install cargo-zigbuild==0.23.4 ziglang==0.16.0
+
+      - name: Test
+        run: cargo test --locked
+
+      - name: Build
+        run: cargo zigbuild --locked --release --target ${{ matrix.target }}
+
+      - name: Package
+        run: |
+          name="dns-proxy-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          mkdir -p "pkg/$name/dist"
+          cp "target/${{ matrix.target }}/release/dns-proxy" "pkg/$name/"
+          cp LICENSE README.md config.example.toml "pkg/$name/"
+          cp dist/dns-proxy.service "pkg/$name/dist/"
+          tar -C pkg --owner=0 --group=0 --numeric-owner -czf "$name.tar.gz" "$name"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ matrix.target }}
+          path: dns-proxy-*.tar.gz
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write      # create the release
+      id-token: write      # sign the provenance attestation
+      attestations: write  # store the attestation
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: out
+          merge-multiple: true
+
+      - name: Checksums
+        working-directory: out
+        run: sha256sum dns-proxy-*.tar.gz > SHA256SUMS && cat SHA256SUMS
+
+      - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-path: out/dns-proxy-*.tar.gz
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=""
+          case "$GITHUB_REF_NAME" in *-*) flags="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --generate-notes \
+            --title "$GITHUB_REF_NAME" \
+            $flags \
+            out/dns-proxy-*.tar.gz out/SHA256SUMS
